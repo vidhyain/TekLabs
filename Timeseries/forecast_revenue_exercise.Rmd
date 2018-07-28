@@ -1,0 +1,177 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Installing the packages required to run time series model like
+ARIMA - forecast
+UCM   - rucm
+Hybrid - forecastHybrid
+```{r}
+
+library('forecast')
+library('rucm')
+library('forecastHybrid')
+install.packages('openxlsx')
+```
+
+Importing the data using openxlsx
+```{r}
+library('openxlsx')
+data=read.xlsx('Sample Data.xlsx')
+
+```
+
+Performing EDA analysis using data
+1. Finding structure of the table, datatype of variables
+2. Finding the missing values
+3. Finding outliers and replace with appropriate values
+4.Finding summary statisatics
+```{r}
+# structure of the table
+str(data)
+new=data[3]
+head(new)
+colSums(is.na(new))
+q=quantile(data$Revenue,probs = c(0,0.01,0.05,0.1,0.25,0.5,0.75,0.85,0.9,0.92,0.93,0.95,0.99,1),na.rm = TRUE)
+boxplot(new$Revenue)
+
+summary(new)
+new$Revenue=ifelse(new$Revenue>q[9],q[9],new$Revenue)
+boxplot(new$Revenue)
+```
+
+In the above code we understood that 10% percent of data have extreme values and these values are replaced by appropriate values and visualized using boxplot to see replacement has removed those extreme values.
+
+Now Given the data is time series because the data have input time and response variable is revenue. It is time series because the data is collected over regular interval time for more than 3 years.
+Now to forecast the future value,model uses historical value ie previous value. It internally computes the lag varaible and forecast the future values.
+The models used to predict future values are 
+1. ARIMA - Auto regressive Integrated moving Average
+2.UCM    - Unobserved compontent model
+3.Hybrid
+
+1. ARIMA Model
+In Arima Model, we have to find the values of three parameters which are p,I,q
+P - tells about the present value depends on how many past values
+I- Basic assumption of ARIMA is data to be stationary. If the data is not stationary how many time successive difference of response variable is taken to remove trends in the dataset.
+q- tells about the present value depends on how many past error values.
+
+In Arima to remove seasonal cmponent from data set using decompose function which removes the seasonal by performing additive decompose.
+
+
+```{r}
+ts=ts(new,frequency = 12,start = c(2014,1))
+
+model=decompose(ts)
+#To preview the seasonal component 
+model$seasonal
+#to plot the trend patern,cyclic component in the data
+plot(model)
+#removing seasonal component by additive decompose
+new=ts-model$seasonal
+seasonal=data.frame(new,model$seasonal)
+write.csv(seasonal,'seasonal.csv')
+
+```
+To identidy p,q and d parameter 
+d- parameter tells whether data is stationary if the value is 0
+if it is not, by taking successive difference able to convert nonstationary data to stationary.
+stationary data means the data shows no trend, seasonal pattern. It also means mean of the data is zwero and variance is constant.
+When the model removes the trend and seasonal the left out of the data is error. the error is due to the influence of other variables on revenue like discount, advertisement cost, salary, sales_count which are not included in the model bcoz salescount future value wont be avaialble.
+So including the error in the model indirectly including other variables in overall level not in the individual levels
+
+```{r}
+
+#identify d
+ts.plot(new)
+
+```
+
+The plot shows the presence of trend in the data. We can see upward trend over period of time.
+To remove the trend need to find the successive difference but how many iteration needed will be identify by plotting first difference graph if it is parallel then d value is 1 bcoz trend has removed and stationarity is already removed by additive decompose.
+
+
+```{r}
+ts.plot(diff(new))
+```
+
+The plot shows absence of trend by taking one succesive difference in the data.
+Hence the d=1
+
+Now need to identify p value which tells the current vlaue depends on how many past values.
+It can be found using pacf - partial auto correlation function, which computes lag values of current period revenue then find the correlation between current and lag values by removeing intermediate lag effect
+
+```{r}
+pacf(diff(new))
+```
+
+
+Here the plot show the correlation between current and 1 lags. In that only two lag correlation value crosses the blue dot which indicates presence of significant correlations. Hence the p=2
+
+Next Identifing the q value which tells about the present value depends on how many past error values.
+ Which can be computed using acf - auto correlation value.
+ The lag value are previous error values bcoz by removing trend and seasonal the remainign pattern in the data is error.
+ So it uses lag(which is previous error and current error value ) to compute the correlation.
+ 
+```{r}
+acf(diff(new))
+```
+ 
+The plot shows that only one lag has significant correlation with current value.
+Hence the q= 1.
+
+Lets implement the ARIMA model.
+
+```{r}
+model_arima=arima(new,order = c(2,1,1))
+summary(model_arima)
+fitted=fitted(model_arima)
+predict=forecast(model_arima,6)
+out=data.frame(seasonal,fitted)
+write.csv(out,'out.csv')
+```
+```{r}
+model_auto=auto.arima(new)
+summary(model_auto)
+fit=fitted(model_auto)
+predict=forecast(model_auto,6)
+out_auto=data.frame(new,fit)
+write.csv(out_auto,'auto_arima.csv')
+write.csv(predict,'auto_arima_cast.csv')
+
+```
+
+Running Hybrid model
+```{r}
+model_hybrid=hybridModel(new)
+summary(model_hybrid)
+fit=fitted(model_hybrid)
+fcast=forecast(model_hybrid,6)
+accuracy(model_hybrid)
+
+
+  
+
+```
+Running UCM model
+```{r}
+ts_ucm=ts(new,start=c(2014,1),frequency=12)
+model_ucm=ucm(formula=ts_ucm~0,data = ts_ucm,slope = T)
+summary(model_ucm)
+fit=predict(model_ucm)
+predict=predict(model_ucm,6)
+out_auto=data.frame(new,fit)
+write.csv(out_auto,'ucm.csv')
+write.csv(predict,'ucm_cast.csv')
+
+```
+
+```{r}
+ts_ucm
+```
+
+
+
+
+
+
